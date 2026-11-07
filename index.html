@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MINDUNI (EDUCALM) - Nền Tảng Hỗ Trợ Tâm Lý & Định Hướng Tuyển Sinh</title>
+  <meta name="description" content="Nền tảng số hỗ trợ tâm lý cá nhân hóa MindUni (EduCalm) - Lượng hóa A-FOMO Index, phễu cắt tỉa nguyện vọng De-clutter, lộ trình nghề nghiệp ước mơ và dữ liệu KHKT N=180.">
+  
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            teal: {
+              50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4',
+              400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e',
+              800: '#115e59', 900: '#134e4a', 950: '#042f2e',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React 18 & Babel Standalone CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      body { background-color: #fff !important; color: #000 !important; }
+      #printable-compact { border: none !important; box-shadow: none !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased font-sans selection:bg-teal-100 selection:text-teal-900 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // PROCEDURAL WEB AUDIO ENGINE
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.gainNode = null;
+        this.activeNodes = [];
+        this.currentSound = 'none';
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      play(type, volume = 0.4) {
+        this.stop();
+        this.init();
+        if (!this.ctx) return;
+        this.currentSound = type;
+        this.gainNode = this.ctx.createGain();
+        this.gainNode.gain.setValueAtTime(volume, this.ctx.currentTime);
+        this.gainNode.connect(this.ctx.destination);
+
+        if (type === 'rain') {
+          const bufferSize = this.ctx.sampleRate * 2;
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          let b0 = 0, b1 = 0, b2 = 0;
+          for (let i = 0; i < bufferSize; i++) {
+            const white = Math.random() * 2 - 1;
+            b0 = 0.99886 * b0 + white * 0.0555179;
+            b1 = 0.99332 * b1 + white * 0.0750759;
+            b2 = 0.96900 * b2 + white * 0.1538520;
+            data[i] = (b0 + b1 + b2 + white * 0.5) * 0.05;
+          }
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+          noise.loop = true;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+          noise.connect(filter);
+          filter.connect(this.gainNode);
+          noise.start();
+          this.activeNodes.push(noise, filter);
+        } else if (type === 'zen') {
+          [216, 324, 432].forEach((f, idx) => {
+            const osc = this.ctx.createOscillator();
+            osc.type = idx === 0 ? 'sine' : 'triangle';
+            osc.frequency.setValueAtTime(f, this.ctx.currentTime);
+            const toneGain = this.ctx.createGain();
+            toneGain.gain.setValueAtTime(0.08 / (idx + 1), this.ctx.currentTime);
+            osc.connect(toneGain);
+            toneGain.connect(this.gainNode);
+            osc.start();
+            this.activeNodes.push(osc, toneGain);
+          });
+        }
+      }
+      stop() {
+        this.activeNodes.forEach(node => {
+          try {
+            if (node.stop) node.stop();
+            if (node.disconnect) node.disconnect();
+          } catch(e) {}
+        });
+        this.activeNodes = [];
+        this.currentSound = 'none';
+      }
+    }
+    const audioManager = new SoundEngine();
+
+    function MindUniApp() {
+      const [activeTab, setActiveTab] = useState('assessment');
+      const [isSOSOpen, setIsSOSOpen] = useState(false);
+
+      // Thang đo A-FOMO Index
+      const [answers, setAnswers] = useState({ 1:4, 2:4, 3:3, 4:4, 5:3, 6:4, 7:5, 8:4, 9:3 });
+      const afomoQuestions = [
+        { id: 1, text: 'Em luôn cảm thấy phải đăng ký nhiều kỳ thi (ĐGNL, V-SAT, tốt nghiệp) cùng lúc vì sợ một phương thức là không an toàn.' },
+        { id: 2, text: 'Lịch ôn thi chồng chéo và các dạng đề khác nhau khiến em kiệt sức và mất phương hướng.' },
+        { id: 3, text: 'Em cảm thấy tội lỗi hoặc bất an dữ dội nếu một ngày em dành thời gian nghỉ ngơi thay vì cày đề.' },
+        { id: 4, text: 'Khi thấy các trường đại học mở cổng xét tuyển sớm, em cảm thấy hoảng loạn và muốn nộp hồ sơ dù chưa tìm hiểu kỹ.' },
+        { id: 5, text: 'Em sợ rằng nếu chỉ tập trung vào kỳ thi tốt nghiệp 2+2, em sẽ bị tụt hậu và mất hết chỉ tiêu vào tay người khác.' },
+        { id: 6, text: 'Dù đã có một chứng chỉ hoặc phương án an toàn, em vẫn tiếp tục đăng ký thêm các đợt thi khác cho "yên tâm".' },
+        { id: 7, text: 'Mỗi khi lướt mạng xã hội thấy bạn bè khoe IELTS cao hoặc đỗ sớm trường top, em thấy mình kém cỏi và thất bại.' },
+        { id: 8, text: 'Các cuộc trò chuyện trên lớp về điểm số và kỳ thi khiến em lo lắng và cảm giác nghẹt thở.' },
+        { id: 9, text: 'Em có xu hướng đăng ký những ngành học hoặc kỳ thi mà "nhiều bạn giỏi đang theo" thay vì dựa trên khả năng thực sự.' },
+      ];
+
+      const totalScore = Object.values(answers).reduce((a, b) => a + b, 0);
+      let zone = 'yellow';
+      let zoneTitle = 'Vùng Vàng: Nguy Cơ Tiềm Ẩn (19 - 31 điểm)';
+      let zoneColor = 'bg-amber-100 text-amber-900 border-amber-300';
+      if (totalScore >= 32) {
+        zone = 'red';
+        zoneTitle = 'Vùng Đỏ: Báo Động Quá Tải & Hoảng Loạn (32 - 45 điểm)';
+        zoneColor = 'bg-rose-100 text-rose-900 border-rose-300';
+      } else if (totalScore <= 18) {
+        zone = 'green';
+        zoneTitle = 'Vùng Xanh: Cân Bằng & Kiểm Soát Tốt (9 - 18 điểm)';
+        zoneColor = 'bg-emerald-100 text-emerald-900 border-emerald-300';
+      }
+
+      // Lộ trình nghề nghiệp
+      const [profile, setProfile] = useState({
+        gpa: 8.3,
+        math: 8.5,
+        lit: 7.5,
+        eng: 8.2,
+        elective1: 'Vật lý',
+        elective1Score: 8.0,
+        elective2: 'Hóa học',
+        elective2Score: 7.8,
+        careerId: 'ai_tech',
+        targetCareerName: 'Kỹ Sư Trí Tuệ Nhân Tạo & Phần Mềm (AI & Software)',
+      });
+
+      // Phễu De-clutter
+      const focusMethod1 = 'Kỳ Thi Tốt Nghiệp THPT (Mô hình 2+2 mới)';
+      const focusMethod2 = 'Đánh Giá Năng Lực ĐHQG Hà Nội (HSA)';
+      const backupMethod = 'Xét Tuyển Bằng Học Bạ THPT (5 Học Kỳ)';
+
+      // Pomodoro & Breathing
+      const [pomoSec, setPomoSec] = useState(25 * 60);
+      const [pomoRunning, setPomoRunning] = useState(false);
+      const [breathPhase, setBreathPhase] = useState('inhale');
+      const [breathCount, setBreathCount] = useState(4);
+
+      // Nhịp thở SOS
+      useEffect(() => {
+        let t = null;
+        if (isSOSOpen) {
+          t = setInterval(() => {
+            setBreathCount(prev => {
+              if (prev > 1) return prev - 1;
+              if (breathPhase === 'inhale') { setBreathPhase('hold'); return 7; }
+              if (breathPhase === 'hold') { setBreathPhase('exhale'); return 8; }
+              setBreathPhase('inhale'); return 4;
+            });
+          }, 1000);
+        }
+        return () => clearInterval(t);
+      }, [isSOSOpen, breathPhase]);
+
+      // Pomodoro
+      useEffect(() => {
+        let timer = null;
+        if (pomoRunning && pomoSec > 0) {
+          timer = setInterval(() => setPomoSec(p => p - 1), 1000);
+        }
+        return () => clearInterval(timer);
+      }, [pomoRunning, pomoSec]);
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 no-print">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-6">
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold tracking-tight text-teal-800">MINDUNI</span>
+                <span className="text-xs text-slate-400 font-medium">· EduCalm Platform</span>
+              </div>
+              <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-slate-600">
+                <button onClick={() => setActiveTab('assessment')} className={`py-1 border-b-2 ${activeTab === 'assessment' ? 'border-teal-700 text-teal-800' : 'border-transparent hover:text-slate-900'}`}>Đo Lường A-FOMO</button>
+                <button onClick={() => setActiveTab('declutter')} className={`py-1 border-b-2 ${activeTab === 'declutter' ? 'border-teal-700 text-teal-800' : 'border-transparent hover:text-slate-900'}`}>Phễu De-Clutter</button>
+                <button onClick={() => setActiveTab('career_pathway')} className={`py-1 border-b-2 ${activeTab === 'career_pathway' ? 'border-teal-700 text-teal-800' : 'border-transparent hover:text-slate-900'}`}>Lộ Trình Ước Mơ</button>
+                <button onClick={() => setActiveTab('zen')} className={`py-1 border-b-2 ${activeTab === 'zen' ? 'border-teal-700 text-teal-800' : 'border-transparent hover:text-slate-900'}`}>Tĩnh Tâm & Pomodoro</button>
+                <button onClick={() => setActiveTab('compact')} className={`py-1 border-b-2 ${activeTab === 'compact' ? 'border-teal-700 text-teal-800' : 'border-transparent hover:text-slate-900'}`}>Bản Cam Kết A4 & KHKT</button>
+              </nav>
+              <button
+                onClick={() => setIsSOSOpen(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors flex items-center gap-1.5"
+              >
+                <span>●</span>
+                <span>SOS 3 Phút</span>
+              </button>
+            </div>
+          </header>
+
+          <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+            <div className="bg-gradient-to-r from-teal-900 to-slate-900 text-white rounded-3xl p-8 sm:p-12 mb-8 no-print shadow-sm">
+              <div className="flex items-center gap-2 text-xs font-bold text-teal-300 uppercase tracking-wider mb-2">
+                <span>Nghiên Cứu Thực Nghiệm N=180 Học Sinh THPT</span>
+                <span>·</span>
+                <span>p &lt; 0.001</span>
+              </div>
+              <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
+                Giải Tỏa Áp Lực Tuyển Sinh & Hội Chứng FOMO Học Thuật
+              </h1>
+              <p className="text-slate-300 text-xs sm:text-sm mt-3 max-w-2xl leading-relaxed">
+                Nền tảng số hỗ trợ tâm lý cá nhân hóa MindUni (EduCalm) - Lượng hóa A-FOMO Index, phễu cắt tỉa nguyện vọng De-clutter, và thiết kế lộ trình hiện thực hóa ngành mơ ước.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 mt-6">
+                <button onClick={() => setActiveTab('assessment')} className="px-5 py-2.5 rounded-xl text-xs font-bold bg-teal-500 text-slate-950 hover:bg-teal-400">Đo Chỉ Số A-FOMO</button>
+                <button onClick={() => setActiveTab('career_pathway')} className="px-5 py-2.5 rounded-xl text-xs font-bold bg-white/10 text-white hover:bg-white/20 border border-white/20">Lộ Trình Ước Mơ</button>
+                <button onClick={() => setActiveTab('compact')} className="px-5 py-2.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white">Xuất Bản Cam Kết A4</button>
+              </div>
+            </div>
+
+            {/* TAB: ASSESSMENT */}
+            {activeTab === 'assessment' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="lg:col-span-7 bg-white p-6 sm:p-8 rounded-2xl border border-slate-200">
+                  <h2 className="text-lg font-bold text-slate-900 mb-1">Thang Đo A-FOMO Index (9 Câu Chuẩn Hóa)</h2>
+                  <p className="text-xs text-slate-500 mb-6">Đánh giá trung thực cảm xúc trong 2 tuần gần nhất từ 1 (Rất không đúng) đến 5 (Rất đúng).</p>
+                  
+                  <div className="space-y-4">
+                    {afomoQuestions.map(q => (
+                      <div key={q.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+                        <div className="text-xs font-semibold text-slate-800 mb-2">Câu {q.id}: {q.text}</div>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {[1, 2, 3, 4, 5].map(val => (
+                            <button
+                              key={val}
+                              onClick={() => setAnswers({...answers, [q.id]: val})}
+                              className={`py-1.5 rounded text-xs font-bold transition-all ${answers[q.id] === val ? 'bg-teal-700 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                            >
+                              {val}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-5 space-y-6">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center sticky top-20">
+                    <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Tổng Điểm Chỉ Số A-FOMO</div>
+                    <div className="text-5xl font-extrabold text-slate-900 my-2 font-mono tabular-nums">{totalScore} <span className="text-xs text-slate-400 font-normal">/ 45 điểm</span></div>
+                    
+                    <div className={`mt-3 p-3 rounded-xl border text-xs font-bold ${zoneColor}`}>
+                      {zoneTitle}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mt-6">
+                      <button onClick={() => setActiveTab('declutter')} className="p-2.5 rounded-lg text-xs font-bold bg-teal-700 text-white hover:bg-teal-800">Chạy Phễu Cắt Tỉa</button>
+                      <button onClick={() => setActiveTab('career_pathway')} className="p-2.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200">Lộ Trình Ước Mơ</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: DECLUTTER */}
+            {activeTab === 'declutter' && (
+              <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200">
+                <h2 className="text-xl font-bold text-slate-900">Phễu Cắt Tỉa Tuyển Sinh (2 Trọng Tâm + 1 Bảo Hiểm)</h2>
+                <p className="text-xs text-slate-500 mt-1 max-w-2xl">Cắt bỏ kỳ thi dàn trải giúp giải phóng 17.5 giờ học mỗi tuần và tối ưu điểm số.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                  <div className="p-5 rounded-2xl border-2 border-teal-600 bg-teal-50/40">
+                    <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wider block">Trọng Tâm 1 (80% Sức)</span>
+                    <h3 className="text-base font-bold text-slate-900 mt-1">{focusMethod1}</h3>
+                    <p className="text-xs text-slate-600 mt-2">Kỳ thi bắt buộc quốc gia; chỉ tiêu chiếm 45-55% toàn quốc; không tốn lệ phí ngoài.</p>
+                  </div>
+                  <div className="p-5 rounded-2xl border-2 border-teal-600 bg-teal-50/40">
+                    <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wider block">Trọng Tâm 2 (Bổ Trợ Sớm)</span>
+                    <h3 className="text-base font-bold text-slate-900 mt-1">{focusMethod2}</h3>
+                    <p className="text-xs text-slate-600 mt-2">Được hơn 90 trường đại học công nhận; bài thi trên máy tính đo lường tư duy logic.</p>
+                  </div>
+                  <div className="p-5 rounded-2xl border border-slate-300 bg-slate-50">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Bảo Hiểm (Safety Net)</span>
+                    <h3 className="text-base font-bold text-slate-900 mt-1">{backupMethod}</h3>
+                    <p className="text-xs text-slate-600 mt-2">Biết kết quả sớm; tạo vùng an toàn tâm lý giúp học sinh không sợ trượt trắng tay.</p>
+                  </div>
+                </div>
+
+                <div className="mt-8 p-4 rounded-xl bg-slate-100 flex items-center justify-between text-xs">
+                  <span className="font-bold text-teal-800">+17.5 giờ học được giải phóng mỗi tuần cho giấc ngủ</span>
+                  <button onClick={() => setActiveTab('compact')} className="px-4 py-2 bg-teal-700 text-white font-bold rounded-lg hover:bg-teal-800">Ký Bản Cam Kết</button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: CAREER PATHWAY */}
+            {activeTab === 'career_pathway' && (
+              <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">Thiết Kế Lộ Trình: Từ Điểm Số Đến Ngành Mơ Ước</h2>
+                    <p className="text-xs text-slate-500 mt-1">Suy ra lộ trình 4 giai đoạn cụ thể từ THPT đến khi ra nghề.</p>
+                  </div>
+                  <div className="bg-teal-50 px-4 py-2.5 rounded-xl border border-teal-200 text-center">
+                    <div className="text-[10px] text-teal-800 font-bold">Điểm Tổ Hợp Hiện Tại</div>
+                    <div className="text-2xl font-extrabold text-teal-900 font-mono">{(profile.math + profile.elective1Score + profile.elective2Score).toFixed(1)} đ</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-6 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Toán thi thử:</label>
+                    <input type="number" step="0.2" value={profile.math} onChange={e => setProfile({...profile, math: parseFloat(e.target.value)||0})} className="w-full p-2 border border-slate-200 rounded font-bold" />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Môn tự chọn 1 ({profile.elective1}):</label>
+                    <input type="number" step="0.2" value={profile.elective1Score} onChange={e => setProfile({...profile, elective1Score: parseFloat(e.target.value)||0})} className="w-full p-2 border border-slate-200 rounded font-bold" />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Môn tự chọn 2 ({profile.elective2}):</label>
+                    <input type="number" step="0.2" value={profile.elective2Score} onChange={e => setProfile({...profile, elective2Score: parseFloat(e.target.value)||0})} className="w-full p-2 border border-slate-200 rounded font-bold" />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Ngành nghề mơ ước:</label>
+                    <select value={profile.targetCareerName} onChange={e => setProfile({...profile, targetCareerName: e.target.value})} className="w-full p-2 border border-slate-200 rounded font-bold">
+                      <option value="Kỹ Sư Trí Tuệ Nhân Tạo & Phần Mềm (AI & Software)">Kỹ Sư Trí Tuệ Nhân Tạo & Phần Mềm</option>
+                      <option value="Bác Sĩ Đa Khoa & Khoa Học Sức Khỏe">Bác Sĩ Đa Khoa & Y Sinh</option>
+                      <option value="Chuyên Gia Logistics & Chuỗi Cung Ứng Toàn Cầu">Logistics & Chuỗi Cung Ứng</option>
+                      <option value="Quản Trị Marketing Số & Truyền Thông Đa Phương Tiện">Digital Marketing & Truyền Thông</option>
+                      <option value="Chuyên Viên Tài Chính - Ngân Hàng & Fintech">Tài Chính - Ngân Hàng & Fintech</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8">
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs space-y-2">
+                    <div className="font-bold text-teal-800 uppercase text-[11px]">Giai Đoạn 1: Nước Rút THPT</div>
+                    <div className="font-semibold text-slate-900">Hiện tại - Tháng 6/2027</div>
+                    <p className="text-slate-600">· Đẩy điểm Toán và 2 môn tự chọn lên 8.2+. Cắt bỏ các kỳ thi phụ gây xao nhãng.</p>
+                  </div>
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs space-y-2">
+                    <div className="font-bold text-teal-800 uppercase text-[11px]">Giai Đoạn 2: Nền Tảng Đại Học</div>
+                    <div className="font-semibold text-slate-900">Năm 1 - Năm 2</div>
+                    <p className="text-slate-600">· Hoàn thành các môn chuyên ngành cơ sở cốt lõi đạt GPA &gt; 3.2.</p>
+                  </div>
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs space-y-2">
+                    <div className="font-bold text-teal-800 uppercase text-[11px]">Giai Đoạn 3: Thực Chiến Doanh Nghiệp</div>
+                    <div className="font-semibold text-slate-900">Năm 3 - Năm 4</div>
+                    <p className="text-slate-600">· Thực tập thực tế tại doanh nghiệp đầu ngành và xây dựng Portfolio/GitHub.</p>
+                  </div>
+                  <div className="p-4 rounded-xl border border-teal-600 bg-teal-50/50 text-xs space-y-2">
+                    <div className="font-bold text-teal-900 uppercase text-[11px]">Giai Đoạn 4: Chạm Đích Nghề Nghiệp</div>
+                    <div className="font-semibold text-slate-900">Năm 5+ (Khởi Nghiệp Nghề)</div>
+                    <p className="text-slate-600">· Vị trí chuyên viên chính thức với mức lương 12 - 20 triệu/tháng.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: ZEN */}
+            {activeTab === 'zen' && (
+              <div className="max-w-xl mx-auto bg-white p-8 rounded-2xl border border-slate-200 text-center">
+                <div className="text-xs font-bold text-teal-800 uppercase tracking-widest mb-1">Chế Độ Tĩnh Tâm</div>
+                <h2 className="text-xl font-bold text-slate-900 mb-6">Pomodoro 25 Phút & Sóng Âm Sinh Học</h2>
+                <div className="text-6xl font-extrabold text-slate-900 font-mono my-6">
+                  {String(Math.floor(pomoSec / 60)).padStart(2, '0')}:{String(pomoSec % 60).padStart(2, '0')}
+                </div>
+                <div className="flex justify-center gap-3">
+                  <button onClick={() => setPomoRunning(!pomoRunning)} className="px-6 py-2.5 rounded-xl text-xs font-bold bg-teal-700 text-white hover:bg-teal-800">
+                    {pomoRunning ? 'Tạm Dừng' : 'Bắt Đầu'}
+                  </button>
+                  <button onClick={() => { setPomoRunning(false); setPomoSec(25 * 60); }} className="px-4 py-2.5 rounded-xl text-xs font-medium bg-slate-100 text-slate-700">
+                    Đặt Lại
+                  </button>
+                </div>
+                <div className="mt-8 pt-6 border-t border-slate-100 flex justify-center gap-2">
+                  <button onClick={() => audioManager.play('rain')} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200">Tiếng Mưa</button>
+                  <button onClick={() => audioManager.play('zen')} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200">Sóng 432Hz</button>
+                  <button onClick={() => audioManager.stop()} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-50 text-rose-700">Tắt Âm</button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: COMPACT */}
+            {activeTab === 'compact' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between no-print">
+                  <h2 className="text-lg font-bold text-slate-900">Bản Cam Kết Mục Tiêu Tuyển Sinh Khổ A4</h2>
+                  <button onClick={() => window.print()} className="px-5 py-2.5 bg-teal-700 text-white text-xs font-bold rounded-xl hover:bg-teal-800 shadow-xs">
+                    In / Tải PDF Bản Cam Kết
+                  </button>
+                </div>
+
+                <div id="printable-compact" className="bg-white p-8 sm:p-12 rounded-2xl border-2 border-slate-300 shadow-md max-w-4xl mx-auto text-slate-800 space-y-6 text-xs">
+                  <div className="text-center border-b-2 border-slate-900 pb-4">
+                    <div className="text-[11px] font-bold uppercase tracking-widest text-slate-500">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM · ĐỘC LẬP - TỰ DO - HẠNH PHÚC</div>
+                    <div className="text-xs font-bold text-teal-800 uppercase tracking-wider mt-1">ĐỀ TÀI KHOA HỌC KỸ THUẬT QUỐC GIA · NỀN TẢNG TÂM LÝ MINDUNI (EDUCALM)</div>
+                    <h3 className="text-xl sm:text-2xl font-black text-slate-950 uppercase mt-2">Bản Cam Kết Mục Tiêu Tuyển Sinh & Chăm Sóc Tinh Thần</h3>
+                    <p className="text-[11px] text-slate-500 italic mt-0.5">(Niên khóa tuyển sinh 2026 - 2027)</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><strong>Họ và tên học sinh: </strong>Nguyễn Hoàng Nam</div>
+                    <div><strong>Đại diện phụ huynh: </strong>Nguyễn Văn Hùng</div>
+                    <div><strong>Ngành nghề ước mơ: </strong>{profile.targetCareerName}</div>
+                    <div><strong>Điểm A-FOMO khảo sát: </strong><span className="font-mono font-bold text-teal-800">{totalScore}/45đ</span></div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                    <div className="font-bold text-slate-900 uppercase text-[11px]">Thỏa Thuận Chiến Lược Tuyển Sinh 2+1:</div>
+                    <p>· Phương thức trọng tâm 1: <strong>{focusMethod1}</strong></p>
+                    <p>· Phương thức trọng tâm 2: <strong>{focusMethod2}</strong></p>
+                    <p>· Phương án bảo hiểm an toàn: <strong>{backupMethod}</strong></p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <div className="font-bold text-teal-900 mb-1">Học sinh cam kết:</div>
+                      <p>· Ngủ đủ 7.5 - 8 tiếng mỗi ngày; không lướt mạng xã hội xem flex điểm sau 23h00.</p>
+                      <p>· Kiên định với 2 phương thức đã chốt, không tự ý đăng ký dàn trải.</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <div className="font-bold text-teal-900 mb-1">Phụ huynh cam kết:</div>
+                      <p>· Tuyệt đối không so sánh con với người khác hay điểm số bạn bè.</p>
+                      <p>· Minh bạch tài chính 4 năm đại học và luôn là điểm tựa an tâm cho con.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 pt-8 text-center">
+                    <div className="space-y-10">
+                      <div className="font-bold uppercase">HỌC SINH CAM KẾT</div>
+                      <div className="font-serif italic font-bold text-teal-900 text-sm">Nguyễn Hoàng Nam</div>
+                    </div>
+                    <div className="space-y-10">
+                      <div className="font-bold uppercase">ĐẠI DIỆN PHỤ HUYNH</div>
+                      <div className="font-serif italic font-bold text-teal-900 text-sm">Nguyễn Văn Hùng</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* SOS POPUP */}
+          {isSOSOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md no-print">
+              <div className="bg-slate-900 border border-slate-700 text-white rounded-3xl p-8 max-w-md w-full text-center relative shadow-2xl">
+                <button onClick={() => setIsSOSOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
+                <div className="text-xs font-bold text-rose-400 uppercase tracking-widest">SOS 3 Phút · Cắt Cơn Hoảng Loạn</div>
+                <h3 className="text-lg font-bold text-white mt-1">Hít Thở Sinh Học 4 - 7 - 8</h3>
+                <div className="py-8 flex flex-col items-center justify-center">
+                  <div className={`w-40 h-40 rounded-full flex flex-col items-center justify-center border-4 transition-all duration-1000 ${breathPhase === 'inhale' ? 'scale-110 bg-teal-500/20 border-teal-400' : breathPhase === 'hold' ? 'scale-110 bg-amber-500/20 border-amber-400' : 'scale-90 bg-sky-500/10 border-sky-400'}`}>
+                    <span className="text-[10px] font-bold text-slate-300 uppercase">{breathPhase === 'inhale' ? 'HÍT VÀO' : breathPhase === 'hold' ? 'NÍN THỞ' : 'THỞ RA'}</span>
+                    <span className="text-4xl font-black mt-1 font-mono">{breathCount}s</span>
+                  </div>
+                </div>
+                <button onClick={() => setIsSOSOpen(false)} className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl">Tôi Đã Thấy Bình Tâm Hơn</button>
+              </div>
+            </div>
+          )}
+
+          <footer className="bg-slate-900 text-slate-400 py-8 border-t border-slate-800 text-xs no-print text-center">
+            <p>© 2026-2027 MindUni EduCalm · Đề tài Nghiên cứu Khoa học Kỹ thuật N=180 (p &lt; 0.001)</p>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<MindUniApp />);
+  </script>
+</body>
+</html>
